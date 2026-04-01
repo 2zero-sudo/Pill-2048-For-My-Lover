@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>皮克敏種子花園 2048 - 愛心能量版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f1f8e9; overflow: hidden; overscroll-behavior: none; }
+        
+        .grid-container { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 10px; background-color: #a5d6a7; border-radius: 12px; padding: 10px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.1); position: relative; }
+        .grid-cell { background-color: rgba(255,255,255,0.3); border-radius: 8px; height: 80px; width: 80px; }
+
+        .tile { position: absolute; width: 80px; height: 80px; transition: all 0.15s ease-in-out; z-index: 10; }
+        .tile-inner { 
+            width: 100%; height: 100%; border-radius: 10px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative;
+            animation: appear 0.2s ease-out;
+        }
+
+        /* 愛心容器 */
+        .heart-container {
+            position: absolute; bottom: 5px; right: 5px;
+            color: #ff80ab; font-size: 24px; display: flex; align-items: center; justify-content: center;
+        }
+        .heart-value {
+            position: absolute; color: white; font-size: 10px; font-weight: 900;
+            top: 50%; left: 50%; transform: translate(-50%, -60%);
+        }
+
+        @keyframes appear { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* 不同等級的顏色 */
+        .tile-2 .tile-inner { background: #ffffff; }
+        .tile-4 .tile-inner { background: #e3f2fd; }
+        .tile-8 .tile-inner { background: #ffebee; }
+        .tile-16 .tile-inner { background: #fffde7; border: 2px solid #fbc02d; }
+        .tile-32 .tile-inner { background: #e8f5e9; border: 2px solid #4caf50; }
+        .tile-64 .tile-inner { background: #f3e5f5; border: 2px solid #9c27b0; }
+        /* ...以此類推 */
+    </style>
+</head>
+<body class="p-4 flex flex-col items-center">
+
+    <header class="w-full max-w-[380px] mb-4">
+        <div class="flex justify-between items-end mb-2">
+            <h1 class="text-2xl font-bold text-green-800">皮克敏花園</h1>
+            <div class="text-right">
+                <span class="text-xs font-bold text-green-600">精華點數</span>
+                <div id="score" class="text-3xl font-bold text-green-900 leading-none">0</div>
+            </div>
+        </div>
+        
+        <div class="flex space-x-2">
+            <button onclick="undo()" class="flex-1 bg-white border-2 border-green-200 text-green-700 py-2 rounded-xl font-bold hover:bg-green-50 shadow-sm active:scale-95 transition">
+                <i class="fas fa-undo-alt mr-1"></i> 反悔一步
+            </button>
+            <button onclick="setupGame()" class="flex-1 bg-green-600 text-white py-2 rounded-xl font-bold hover:bg-green-700 shadow-md active:scale-95 transition">
+                重新開始
+            </button>
+        </div>
+    </header>
+
+    <div class="grid-container" id="game-board">
+        <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+        <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+        <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+        <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+        
+        <div id="tile-layer" class="absolute top-[10px] left-[10px] w-[360px] h-[360px] pointer-events-none"></div>
+    </div>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<script>
+    const tileLayer = document.getElementById('tile-layer');
+    const scoreDisplay = document.getElementById('score');
+    let board = [];
+    let score = 0;
+    let history = []; // 用於存放上一步狀態
+
+    const pikminData = {
+        2: "🌱", 4: "🍃", 8: "🌸", 16: "💛", 32: "💙", 64: "❤️", 
+        128: "💎", 256: "🦋", 512: "👾", 1024: "🌟", 2048: "👑"
+    };
+
+    function setupGame() {
+        board = Array(4).fill(0).map(() => Array(4).fill(0));
+        score = 0;
+        history = [];
+        addRandomTile();
+        addRandomTile();
+        render();
+    }
+
+    function addRandomTile() {
+        let empty = [];
+        for(let r=0; r<4; r++) for(let c=0; c<4; c++) if(board[r][c]===0) empty.push({r,c});
+        if(empty.length > 0) {
+            let {r, c} = empty[Math.floor(Math.random()*empty.length)];
+            board[r][c] = Math.random() < 0.9 ? 2 : 4;
+        }
+    }
+
+    // 儲存目前狀態到歷史紀錄
+    function saveHistory() {
+        if (history.length > 5) history.shift(); // 只保留最近 5 步
+        history.push({
+            board: JSON.parse(JSON.stringify(board)),
+            score: score
+        });
+    }
+
+    function undo() {
+        if (history.length > 0) {
+            let prev = history.pop();
+            board = prev.board;
+            score = prev.score;
+            render();
+        } else {
+            alert("不能再反悔囉！");
+        }
+    }
+
+    function render() {
+        tileLayer.innerHTML = '';
+        scoreDisplay.innerText = score;
+        for(let r=0; r<4; r++) {
+            for(let c=0; c<4; c++) {
+                if(board[r][c] !== 0) {
+                    const val = board[r][c];
+                    const tile = document.createElement('div');
+                    tile.className = `tile tile-${val}`;
+                    tile.style.top = `${r * 90}px`; // 80px cell + 10px gap
+                    tile.style.left = `${c * 90}px`;
+
+                    tile.innerHTML = `
+                        <div class="tile-inner">
+                            <span class="text-4xl">${pikminData[val] || '🍄'}</span>
+                            <div class="heart-container">
+                                <i class="fas fa-heart"></i>
+                                <span class="heart-value">${val}</span>
+                            </div>
+                        </div>
+                    `;
+                    tileLayer.appendChild(tile);
+                }
+            }
+        }
+    }
+
+    function move(dir) {
+        saveHistory(); // 移動前先存檔
+        let moved = false;
+        let prevBoard = JSON.stringify(board);
+
+        // 簡化的 2048 邏輯 (左、右、上、下)
+        if(dir === 'ArrowLeft' || dir === 'ArrowRight') {
+            for(let r=0; r<4; r++) {
+                let row = board[r].filter(v => v !== 0);
+                if(dir === 'ArrowRight') row.reverse();
+                for(let i=0; i<row.length-1; i++) {
+                    if(row[i] === row[i+1]) { row[i] *= 2; score += row[i]; row[i+1] = 0; }
+                }
+                row = row.filter(v => v !== 0);
+                while(row.length < 4) row.push(0);
+                if(dir === 'ArrowRight') row.reverse();
+                board[r] = row;
+            }
+        } else {
+            for(let c=0; c<4; c++) {
+                let col = [];
+                for(let r=0; r<4; r++) col.push(board[r][c]);
+                col = col.filter(v => v !== 0);
+                if(dir === 'ArrowDown') col.reverse();
+                for(let i=0; i<col.length-1; i++) {
+                    if(col[i] === col[i+1]) { col[i] *= 2; score += col[i]; col[i+1] = 0; }
+                }
+                col = col.filter(v => v !== 0);
+                while(col.length < 4) col.push(0);
+                if(dir === 'ArrowDown') col.reverse();
+                for(let r=0; r<4; r++) board[r][c] = col[r];
+            }
+        }
+
+        if(JSON.stringify(board) !== prevBoard) {
+            addRandomTile();
+            render();
+        } else {
+            history.pop(); // 如果沒動，把剛才存的歷史紀錄移除
+        }
+    }
+
+    window.addEventListener('keydown', e => {
+        if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+            e.preventDefault();
+            move(e.key);
+        }
+    });
+
+    // 觸控支援
+    let tsX, tsY;
+    document.addEventListener('touchstart', e => { tsX = e.touches[0].clientX; tsY = e.touches[0].clientY; });
+    document.addEventListener('touchend', e => {
+        let dx = e.changedTouches[0].clientX - tsX;
+        let dy = e.changedTouches[0].clientY - tsY;
+        if(Math.abs(dx) > Math.abs(dy)) {
+            if(Math.abs(dx) > 30) move(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+        } else {
+            if(Math.abs(dy) > 30) move(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+        }
+    });
+
+    setupGame();
+</script>
+</body>
+</html>
